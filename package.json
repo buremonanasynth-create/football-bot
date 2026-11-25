@@ -1,0 +1,17 @@
+{
+  "name": "football-bot",
+  "version": "1.0.0",
+  "description": "Telegram Football Match Information Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
