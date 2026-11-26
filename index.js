@@ -1,4 +1,4 @@
-// index.js — Main bot entry point (Clean Layout, No Admin Panel, Chinese)
+// index.js — Main bot entry point (No deleting messages, No Admin Panel, Chinese)
 const { Telegraf, Markup } = require("telegraf");
 const { pool, initDb } = require("./db");
 const texts = require("./texts");
@@ -83,7 +83,6 @@ bot.command("purchases", async (ctx) => {
 // ---------- Callback handlers (Inline buttons) ----------
 bot.action("menu_matches", async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.deleteMessage().catch(() => {});
   const res = await pool.query("SELECT * FROM matches ORDER BY id DESC");
   if (res.rows.length === 0) return ctx.reply(texts.noMatches);
   
@@ -97,7 +96,6 @@ bot.action("menu_matches", async (ctx) => {
 
 bot.action("menu_purchases", async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.deleteMessage().catch(() => {});
   bot.command("purchases", ctx).catch(() => {});
 });
 
@@ -159,7 +157,6 @@ bot.on("successful_payment", async (ctx) => {
 
 bot.action("menu_home", async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.deleteMessage().catch(() => {});
   showMainMenu(ctx);
 });
 
