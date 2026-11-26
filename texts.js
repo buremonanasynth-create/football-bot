@@ -1,7 +1,12 @@
 // texts.js — All bot text and button labels in Chinese
 module.exports = {
+  // This is the text shown when the user presses /start
   welcome: (name) =>
-    `👋 欢迎, ${name}!\n\n浏览并购买足球赛事信息。\n请点击下方按钮开始。`,
+    `👋 欢迎, ${name}!\n\n` +
+    `欢迎使用我们的足球赛事信息平台。\n` +
+    `我们提供最真实、最精准的比赛内幕信息。\n\n` +
+    `📢 请务必加入我们的官方频道获取最新通知！\n` +
+    `👇 点击下方按钮浏览比赛或查看已购买的信息。`,
 
   noMatches: "📭 目前没有可用的比赛，请稍后再来。",
 
