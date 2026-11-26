@@ -1,35 +1,27 @@
-// texts.js — All bot text and button labels in one place
+// texts.js — All bot text and button labels in Chinese
 module.exports = {
   welcome: (name) =>
-    `👋 Welcome, ${name}!\n\nBrowse and purchase football match information.\nUse the buttons below to get started.`,
+    `👋 欢迎, ${name}!\n\n浏览并购买足球赛事信息。\n请点击下方按钮开始。`,
 
-  buttons: {
-    matches: "⚽ Available Matches",
-    purchases: "🛒 My Purchases",
-    channel: "📢 Join Our Channel",
-    support: "💬 Contact Support",
-    admin: "🔧 Admin Panel",
-  },
-
-  noMatches: "📭 No matches are available right now. Please check back later.",
+  noMatches: "📭 目前没有可用的比赛，请稍后再来。",
 
   matchCard: (m) =>
     `⚽ *${m.league}*\n\n` +
-    `🏠 Home: ${m.home_team}\n` +
-    `✈️ Away: ${m.away_team}\n` +
-    `📅 Date: ${m.match_date}\n` +
-    `🕒 Time: ${m.match_time}\n` +
-    `💰 Price: ${m.price} ⭐\n\n` +
-    `📝 Basic Info:\n${m.basic_info || "N/A"}\n\n` +
-    `🔒 Full information is locked. Pay to unlock.`,
+    `🏠 主队: ${m.home_team}\n` +
+    `✈️ 客队: ${m.away_team}\n` +
+    `📅 日期: ${m.match_date}\n` +
+    `🕒 时间: ${m.match_time}\n` +
+    `💰 价格: ${m.price} ⭐\n\n` +
+    `📝 基本信息:\n${m.basic_info || "暂无"}\n\n` +
+    `🔒 完整信息已锁定，请付款解锁。`,
 
-  lockedInfo: "🔒 This information is protected. Complete payment to reveal it.",
+  lockedInfo: "🔒 此信息受保护，请完成付款后查看。",
 
-  paymentSuccess: "✅ Payment confirmed! Here is your match information:",
+  paymentSuccess: "✅ 支付成功！这是您的比赛信息：",
 
-  alreadyPurchased: "✅ You already purchased this match. Here is your information:",
+  alreadyPurchased: "✅ 您已经购买过此比赛。以下是您的信息：",
 
-  noPurchases: "🛒 You have not purchased any matches yet.",
+  noPurchases: "🛒 您还没有购买任何比赛。",
 
-  supportMsg: "💬 For help, contact our support account.",
+  supportMsg: "💬 如需帮助，请联系客服。",
 };
