@@ -1,9 +1,8 @@
-// index.js — Main bot entry point
+// index.js — Main bot entry point (Clean Layout, No Admin Panel)
 const { Telegraf, Markup } = require("telegraf");
 const { pool, initDb } = require("./db");
 const texts = require("./texts");
 const { sendMatchInvoice, confirmPayment, hasPurchased } = require("./payments");
-const { showAdminPanel, handleAdminMessage, isAdmin, adminKeyboard } = require("./admin");
 
 if (!process.env.BOT_TOKEN) {
   console.error("Missing BOT_TOKEN environment variable");
@@ -12,67 +11,98 @@ if (!process.env.BOT_TOKEN) {
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ---------- Helpers ----------
-function mainKeyboard(ctx) {
-  const rows = [
-    [texts.buttons.matches],
-    [texts.buttons.purchases],
-    [texts.buttons.channel, texts.buttons.support],
-  ];
-  if (isAdmin(ctx)) rows.push([texts.buttons.admin]);
-  return Markup.keyboard(rows).resize();
-}
+// Set the Menu button on the left of the text input box
+bot.telegram.setMyCommands([
+  { command: "start", description: "🏠 Main Menu" },
+  { command: "matches", description: "⚽ Available Matches" },
+  { command: "purchases", description: "🛒 My Purchases" },
+]);
 
-async function ensureUser(ctx) {
+// Function to show the main welcome message
+async function showMainMenu(ctx) {
   const from = ctx.from;
+  // Save user to database
   await pool.query(
     `INSERT INTO users (telegram_id, username, first_name)
      VALUES ($1,$2,$3)
      ON CONFLICT (telegram_id) DO UPDATE SET username = EXCLUDED.username, first_name = EXCLUDED.first_name`,
     [from.id, from.username || null, from.first_name || null]
   );
+
+  const msg = texts.welcome(from.first_name) + "\n\n" +
+    `📢 **Channel**: [Join Here](${process.env.CHANNEL_LINK || "https://t.me/"})\n` +
+    `💬 **Support**: [Contact Here](${process.env.SUPPORT_LINK || "https://t.me/"})`;
+
+  await ctx.reply(msg, {
+    parse_mode: "Markdown",
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback("⚽ Available Matches", "menu_matches")],
+      [Markup.button.callback("🛒 My Purchases", "menu_purchases")],
+    ]),
+  });
 }
 
 // ---------- Commands ----------
-bot.start(async (ctx) => {
-  await ensureUser(ctx);
-  await ctx.reply(texts.welcome(ctx.from.first_name), mainKeyboard(ctx));
-});
+bot.start(showMainMenu);
 
-bot.command("admin", async (ctx) => {
-  if (!isAdmin(ctx)) return ctx.reply("⛔ Not authorized.");
-  await showAdminPanel(ctx);
-});
+bot.command("matches", async (ctx) => {
+  const res = await pool.query("SELECT * FROM matches ORDER BY id DESC");
+  if (res.rows.length === 0) return ctx.reply("No matches available right now.");
 
-// ---------- Payment handlers ----------
-bot.on("pre_checkout_query", async (ctx) => {
-  // Always approve the pre-checkout so Telegram proceeds
-  try {
-    await ctx.answerPreCheckoutQuery(true);
-  } catch (e) {
-    console.error("pre_checkout answer failed:", e.message);
-  }
-});
+  for (const m of res.rows) {
+    const msg = `⚽ **${m.league}**\n` +
+      `🏠 ${m.home_team} vs ✈️ ${m.away_team}\n` +
+      `📅 ${m.match_date} | 🕒 ${m.match_time}\n` +
+      `💰 Price: ${m.price} ⭐`;
 
-bot.on("successful_payment", async (ctx) => {
-  try {
-    const payment = ctx.message.successful_payment;
-    const chargeId = payment.telegram_payment_charge_id;
-    const payload = payment.invoice_payload;
-    const match = await confirmPayment(ctx, payload, chargeId, ctx.from.id);
-
-    await ctx.reply(texts.paymentSuccess);
-    await ctx.reply(match.protected_info || texts.lockedInfo, {
+    await ctx.reply(msg, {
       parse_mode: "Markdown",
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback(`👁 View Match`, `view_${m.id}`)],
+      ]),
     });
-    await ctx.reply("Use the menu below:", mainKeyboard(ctx));
-  } catch (e) {
-    console.error("successful_payment error:", e);
-    await ctx.reply("⚠️ Payment received but we could not unlock the info. Please contact support.");
   }
 });
 
-// ---------- Callback buttons (View Match / Pay) ----------
+bot.command("purchases", async (ctx) => {
+  const res = await pool.query(
+    `SELECT m.* FROM orders o JOIN matches m ON m.id = o.match_id
+     WHERE o.telegram_id = $1 AND o.status = 'paid'
+     ORDER BY o.id DESC`,
+    [ctx.from.id]
+  );
+  if (res.rows.length === 0) return ctx.reply("You have not purchased any matches yet.");
+
+  for (const m of res.rows) {
+    await ctx.reply(
+      `✅ **${m.league}**\n${m.home_team} vs ${m.away_team}\n\n${m.protected_info}`,
+      { parse_mode: "Markdown" }
+    );
+  }
+});
+
+// ---------- Callback handlers (Inline buttons) ----------
+bot.action("menu_matches", async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.deleteMessage().catch(() => {});
+  bot.command("matches", ctx).catch(() => {});
+  // Trigger matches manually
+  const res = await pool.query("SELECT * FROM matches ORDER BY id DESC");
+  if (res.rows.length === 0) return ctx.reply("No matches available right now.");
+  for (const m of res.rows) {
+    await ctx.reply(`⚽ **${m.league}**\n🏠 ${m.home_team} vs ✈️ ${m.away_team}\n📅 ${m.match_date} | 🕒 ${m.match_time}\n💰 Price: ${m.price} ⭐`, {
+      parse_mode: "Markdown",
+      ...Markup.inlineKeyboard([[Markup.button.callback(`👁 View Match`, `view_${m.id}`)]]),
+    });
+  }
+});
+
+bot.action("menu_purchases", async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.deleteMessage().catch(() => {});
+  bot.command("purchases", ctx).catch(() => {});
+});
+
 bot.action(/^view_(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const matchId = parseInt(ctx.match[1], 10);
@@ -82,15 +112,22 @@ bot.action(/^view_(\d+)$/, async (ctx) => {
 
   const owned = await hasPurchased(ctx.from.id, matchId);
   if (owned) {
-    await ctx.reply(texts.alreadyPurchased);
-    await ctx.reply(m.protected_info || texts.lockedInfo, { parse_mode: "Markdown" });
+    await ctx.reply(`✅ You already purchased this.\n\n${m.protected_info}`, { parse_mode: "Markdown" });
     return;
   }
 
-  await ctx.reply(texts.matchCard(m), {
+  const msg = `⚽ **${m.league}**\n` +
+    `🏠 ${m.home_team} vs ✈️ ${m.away_team}\n` +
+    `📅 ${m.match_date} | 🕒 ${m.match_time}\n` +
+    `💰 Price: ${m.price} ⭐\n\n` +
+    `📝 **Basic Info:**\n${m.basic_info || "N/A"}\n\n` +
+    `🔒 *Full information is locked.*`;
+
+  await ctx.reply(msg, {
     parse_mode: "Markdown",
     ...Markup.inlineKeyboard([
       [Markup.button.callback(`💳 Pay ${m.price} ⭐ to Unlock`, `pay_${m.id}`)],
+      [Markup.button.callback(`⬅️ Back to List`, `menu_matches`)],
     ]),
   });
 });
@@ -103,91 +140,45 @@ bot.action(/^pay_(\d+)$/, async (ctx) => {
   const m = res.rows[0];
 
   if (await hasPurchased(ctx.from.id, matchId)) {
-    await ctx.reply(texts.alreadyPurchased);
-    await ctx.reply(m.protected_info || texts.lockedInfo, { parse_mode: "Markdown" });
+    await ctx.reply(`✅ You already purchased this.\n\n${m.protected_info}`, { parse_mode: "Markdown" });
     return;
   }
-
   await sendMatchInvoice(ctx, m);
 });
 
-// ---------- Text buttons ----------
-bot.on("text", async (ctx, next) => {
-  await ensureUser(ctx);
-  const text = ctx.message.text;
+// ---------- Payment handlers ----------
+bot.on("pre_checkout_query", async (ctx) => {
+  await ctx.answerPreCheckoutQuery(true).catch((e) => console.error(e.message));
+});
 
-  // Let the admin conversation handler take priority
-  if (isAdmin(ctx)) {
-    const handled = await handleAdminMessage(ctx);
-    if (handled) return;
+bot.on("successful_payment", async (ctx) => {
+  try {
+    const payment = ctx.message.successful_payment;
+    const match = await confirmPayment(ctx, payment.invoice_payload, payment.telegram_payment_charge_id, ctx.from.id);
+
+    await ctx.reply(`✅ Payment confirmed! Here is your protected match information:\n\n${match.protected_info}`, {
+      parse_mode: "Markdown",
+      ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Main Menu", "menu_home")]]),
+    });
+  } catch (e) {
+    console.error(e);
+    await ctx.reply("⚠️ Payment received but we could not unlock the info. Please contact support.");
   }
+});
 
-  if (text === texts.buttons.matches) {
-    const res = await pool.query("SELECT * FROM matches ORDER BY id DESC");
-    if (res.rows.length === 0) return ctx.reply(texts.noMatches);
-
-    for (const m of res.rows) {
-      await ctx.reply(
-        `⚽ *${m.league}*\n🏠 ${m.home_team} vs ✈️ ${m.away_team}\n📅 ${m.match_date} 🕒 ${m.match_time}\n💰 ${m.price} ⭐`,
-        {
-          parse_mode: "Markdown",
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback("👁 View Match", `view_${m.id}`)],
-          ]),
-        }
-      );
-    }
-    return;
-  }
-
-  if (text === texts.buttons.purchases) {
-    const res = await pool.query(
-      `SELECT m.* FROM orders o JOIN matches m ON m.id = o.match_id
-       WHERE o.telegram_id = $1 AND o.status = 'paid'
-       ORDER BY o.id DESC`,
-      [ctx.from.id]
-    );
-    if (res.rows.length === 0) return ctx.reply(texts.noPurchases);
-
-    for (const m of res.rows) {
-      await ctx.reply(
-        `✅ *${m.league}*\n${m.home_team} vs ${m.away_team}\n\n${m.protected_info || texts.lockedInfo}`,
-        {
-          parse_mode: "Markdown",
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback("👁 View Again", `view_${m.id}`)],
-          ]),
-        }
-      );
-    }
-    return;
-  }
-
-  if (text === texts.buttons.channel) {
-    const link = process.env.CHANNEL_LINK || "https://t.me/";
-    return ctx.reply(`📢 Join our channel: ${link}`);
-  }
-
-  if (text === texts.buttons.support) {
-    const link = process.env.SUPPORT_LINK || "https://t.me/";
-    return ctx.reply(`💬 Contact support: ${link}`);
-  }
-
-  if (text === texts.buttons.admin && isAdmin(ctx)) {
-    await showAdminPanel(ctx);
-    return;
-  }
-
-  return next();
+bot.action("menu_home", async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.deleteMessage().catch(() => {});
+  showMainMenu(ctx);
 });
 
 // ---------- Boot ----------
 (async () => {
   try {
     await initDb();
-    await bot.telegram.deleteWebhook({ drop_pending_updates: false }).catch(() => {});
+    await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
     await bot.launch();
-    console.log("Bot is running (long polling).");
+    console.log("Bot is running cleanly without admin panel.");
   } catch (e) {
     console.error("Startup error:", e);
     process.exit(1);
